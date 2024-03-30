@@ -163,7 +163,7 @@ def do_logout():
         del session[CURR_USER_KEY]
 
 @app.route('/register', methods=['GET', 'POST'])
-def register():f
+def register():
 
     form = RegistrationForm()
 
