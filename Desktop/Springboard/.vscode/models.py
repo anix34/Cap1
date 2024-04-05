@@ -1,11 +1,17 @@
 # import json
 from flask_login import UserMixin
 from sqlalchemy import Column, Integer, String
+from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 
-db = SQLAlchemy()
+
 bcrypt = Bcrypt()
+db = SQLAlchemy()
+
+def connect_db(app):
+    db.app = app
+    db.init_app(app)
 
 class Drink(db.Model):
     __tablename__ = "drinks"
@@ -68,18 +74,46 @@ class AddDrink(db.Model):
 class User(db.Model, UserMixin):
     __tablename__ = 'users'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    email = Column(db.String, primary_key=True)
-    username = Column(String(80), unique=True, nullable=False)
-    password = Column(String(120), nullable=False)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    email = db.Column(db.String, unique=True, nullable=False)
+    username = db.Column(db.String(120), unique=True)
+    password_hash = db.Column(db.String(256), nullable=False)
 
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    #handle_recently_viewed_drink
+    add_drink= db.relationship(
+        "AddDrink",
+        backref='user',
+        passive_deletes=True
+    )
 
     def __repr__(self):
         return f"<User #{self.id}: {self.username}, {self.email}>"
 
+    def __init__(self, username, password, email, id=1):
+        self.username = username
+        self.password = password
+        self.email = email
+
+    def is_authenticated(self):
+        return True
+
+    def is_active(self):
+        return True
+
+    def is_anonymous(self):
+        return False
+
+    def get_id(self):
+        return str(self.id)
 
     @classmethod
-    def register(cls, username, pwd, email):
+    def Signup(cls, username, pwd, email):
         """Register user w/hashed password & return user."""
 
         hashed_pwd = bcrypt.generate_password_hash(pwd).decode('UTF-8')
@@ -87,8 +121,8 @@ class User(db.Model, UserMixin):
         # return instance of user w/username and hashed pwd
         return cls(username=username, password=hashed_pwd, email=email)
 
-@classmethod
-def authenticate(cls, username, pwd):
+    @classmethod
+    def authenticate(cls, username, pwd):
         """Validate that user exists & password is correct.
 
         Return user if valid; else return False.
@@ -103,7 +137,3 @@ def authenticate(cls, username, pwd):
             return False
             
 
-
-def connect_db(app):
-    db.app = app
-    db.init_app(app)
