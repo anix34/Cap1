@@ -1,8 +1,9 @@
 from flask import Flask, request, redirect, render_template, flash, session, jsonify, g, url_for
 import requests
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from models import connect_db, db, User, Drink, AddDrink
-from forms import UserForm, RegistrationForm, LoginForm, DrinkForm, UpdateUserForm
+from flask_login import LoginManager, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+from models import connect_db, User, db, Drink, AddDrink
+from forms import UserForm, SignupForm, LoginForm, DrinkForm, UpdateUserForm
 import os
 import re
 from sqlalchemy.exc import IntegrityError
@@ -20,18 +21,25 @@ connect_db(app)
 db.create_all()
 
 users = [
-    User(id=1, username='user1', password='password1'),
-    User(id=2, username='user2', password='password2')
+    User(id=1, username='user1', password='password1', email='email'),
+    User(id=2, username='user2', password='password2', email='email'),
 ]
+
 
 # Initialize Flask-Login
 
-login_manager = LoginManager(app)
-login_manager.login_view = 'login'
+login_manager=LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
 
 @login_manager.user_loader
-def load_user(user_id):
-    return next((user for user in users if user.id == int(user_id)), None)
+def load_user(username):
+    return User.query.filter_by(username = username).first()
+    
+        
+@login_manager.unauthorized_handler
+def unauthorized():
+    return redirect(url_for("login"))
 
 
 if __name__ == '__main__':
@@ -67,7 +75,7 @@ def get_drink_id(idDrink):
 def handle_show_drink(user_id, drink_id):
     try:
         added = AddDrink(
-            user_id=user_id, drink_id=drink_id)
+        user_id=user_id, drink_id=drink_id)
         db.session.add(added)
         db.session.commit()
 
@@ -94,6 +102,14 @@ def add_fav(user_id):
 @app.route('/')
 def homepage():
     return render_template('index.html')
+
+if __name__ == '__main__':
+    db.create_all()
+    app.run(debug=True)
+
+
+
+
 
 ##############################SEARCH BY NAME################################
 
@@ -162,49 +178,85 @@ def do_logout():
     if CURR_USER_KEY in session:
         del session[CURR_USER_KEY]
 
-@app.route('/register', methods=['GET', 'POST'])
-def register():
 
-    form = RegistrationForm()
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+     def is_authenticated():
+      if current_user.is_authenticated:
+       return redirect(url_for('homepage'))
 
-    if request.method == 'POST':
+     form = SignupForm()
+
+     if request.method == 'POST':
+        if form.validate_on_submit():
         # Retrieve form data
-        username = request.form['username']
-        password = request.form['password']
-        
-        # Dummy registration process
-        # In a real application, you'd hash the password and save it securely
-        users.append({'username': username, 'password': password})
-        
-        flash(f'Account created for {form.username.data}!', 'success')
+          username = request.form['username']
+          password = request.form['password']
+          email = request.form['email']
+
+        if User.query.filter_by(username=username).first():
+            flash('Username already exists. Please choose a different one.', 'error')
+            return redirect(url_for('signup'))
+        if User.query.filter_by(email=email).first():
+            flash('Email already exists. Please use a different one.', 'error')
+            return redirect(url_for('signup'))
+
+        # Create a new User object
+        new_user = User(username=username, password=password, email=email)
+
+        # Set the password for the new user
+        new_user.set_password(password)
+
+        # Add the new user to the database
+        db.session.add(new_user)
+        db.session.commit()
+
+        flash(f'Account created for {username}!', 'success')
 
         # Redirect to a success page or login page
-        return redirect('/login')
-    else:
+        return redirect('login')
+     else:
         # Render the registration form template for GET requests
-        return render_template("/users/register.html", form=form)
+        return render_template('/users/signup.html', form=form)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+
     form = LoginForm()
-    if form.validate_on_submit():
-        username = form.username.data
-        password = form.password.data
-        user = next((user for user in users if user.username == username and user.password == password), None)
+
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+
+        user = User.query.filter_by(username=username).first()
+
         if user:
-            login_user(user)
-            flash('Logged in successfully!', 'success')
-            return redirect(url_for('index'))
+            if check_password_hash(user.password_hash, password):
+                do_login(user)
+                flash('Welcome to Mixology!')
+                return redirect(url_for('homepage'))
+            else:
+                flash('Invalid username or password.', 'error')
+                return redirect(url_for('login'))
         else:
-            flash('Invalid username or password', 'danger')
-    return render_template('/users/login.html', form=form)
+            flash('Invalid username or password.', 'error')
+            return redirect(url_for('login'))
+
+    return render_template('/users/login.html', title='Login', form=form)
+
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    return render_template('dashboard.html')
+    
 
 @app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    flash('Logged out successfully!', 'success')
-    return redirect(url_for('index'))
+def do_logout():
+    # Clear the session to log out the user
+    session.clear()
+    flash('You have been logged out successfully!', 'success')
+    return redirect(url_for('homepage'))
 
 if __name__ == '__main__':
     app.run(debug=True)
@@ -259,7 +311,7 @@ def show_all_drink(user_id):
 
 # @app.route("/user/original/drinks")
 # def show_all_org_drink():
-#     """Show list of drink."""
+#     ""Show list of drink.""
 #     if not g.user:
 #         flash("Please login first!", "danger")
 #         return redirect("/")
@@ -330,7 +382,7 @@ def add_drink():
         flash(f"Added '{name}'")
         return redirect('/')
     else:
-        return render_template("/drinks/add_drink.html", form=form)
+        return render_template("/drinks/add_drinks.html", form=form)
 
 @app.route('/drinks/<int:drink_id>/delete', methods=["POST"])
 def removee_drink(drink_id):
