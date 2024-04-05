@@ -1,5 +1,5 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, SubmitField
+from wtforms import StringField, PasswordField, SubmitField, BooleanField
 from wtforms.validators import DataRequired, Email, Length, InputRequired, Optional, ValidationError, EqualTo
 from wtforms.widgets import TextArea
 
@@ -15,7 +15,7 @@ def validate_username(self, field):
     if UserForm.query.filter_by(username=field.data).first():
         raise ValidationError('Username already in use.')
 
-class RegistrationForm(FlaskForm):
+class SignupForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
     email = StringField('Email', validators=[DataRequired(), Email()])
     password = PasswordField('Password', validators=[DataRequired()])
@@ -26,7 +26,7 @@ class LoginForm(FlaskForm):
 
     username = StringField('Username', validators=[DataRequired()])
     password = PasswordField('Password', validators=[Length(min=6)])
-    
+    remember_me = BooleanField('Remember Me')  # Add remember me checkbox
 
 class UpdateUserForm(FlaskForm):
     """Form for updating username and email address"""
